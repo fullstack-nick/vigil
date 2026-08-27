@@ -78,8 +78,7 @@ resource "google_billing_budget" "vigil" {
 
   amount {
     specified_amount {
-      currency_code = "USD"
-      units         = tostring(var.monthly_budget_usd)
+      units = tostring(var.monthly_budget_units)
     }
   }
 

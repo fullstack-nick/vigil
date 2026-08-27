@@ -14,9 +14,10 @@ variable "billing_account_id" {
   default     = "010A7B-134BD2-8CB391"
 }
 
-variable "monthly_budget_usd" {
-  type    = number
-  default = 300
+variable "monthly_budget_units" {
+  description = "Alert-only monthly budget in the billing account's native currency."
+  type        = number
+  default     = 300
 }
 
 variable "database_tier" {
@@ -28,4 +29,3 @@ variable "github_deployer_service_account" {
   type    = string
   default = "vigil-github@boltstream-r7m5o9ld.iam.gserviceaccount.com"
 }
-

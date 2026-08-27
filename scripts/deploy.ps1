@@ -50,35 +50,37 @@ if ($activeAccounts -notcontains $expectedAccount) {
 
 $projectNumber = (gcloud projects describe $vigilProject --format="value(projectNumber)").Trim()
 Assert-NativeSuccess "Read target GCP project"
+gcloud auth application-default set-quota-project $vigilProject --quiet
+Assert-NativeSuccess "Set the Application Default Credentials quota project"
 Write-Host "Deploying Vigil only to $vigilProject ($projectNumber), $vigilRegion."
 
-terraform -chdir=infra/bootstrap init -input=false
+terraform "-chdir=infra/bootstrap" init "-input=false"
 Assert-NativeSuccess "Initialize bootstrap"
-terraform -chdir=infra/bootstrap plan -input=false -out=bootstrap.tfplan
+terraform "-chdir=infra/bootstrap" plan "-input=false" "-out=bootstrap.tfplan"
 Assert-NativeSuccess "Plan bootstrap"
 Assert-SafePlan "infra/bootstrap" "bootstrap.tfplan"
-terraform -chdir=infra/bootstrap apply -input=false -auto-approve bootstrap.tfplan
+terraform "-chdir=infra/bootstrap" apply "-input=false" -auto-approve bootstrap.tfplan
 Assert-NativeSuccess "Apply bootstrap"
 
-$stateBucket = (terraform -chdir=infra/bootstrap output -raw state_bucket).Trim()
+$stateBucket = (terraform "-chdir=infra/bootstrap" output -raw state_bucket).Trim()
 Assert-NativeSuccess "Read state bucket"
 
 if (-not $SkipFoundation) {
-  terraform -chdir=infra/foundation init -input=false -reconfigure "-backend-config=bucket=$stateBucket" "-backend-config=prefix=foundation/demo"
+  terraform "-chdir=infra/foundation" init "-input=false" -reconfigure "-backend-config=bucket=$stateBucket" "-backend-config=prefix=foundation/demo"
   Assert-NativeSuccess "Initialize foundation"
-  terraform -chdir=infra/foundation plan -input=false -out=foundation.tfplan
+  terraform "-chdir=infra/foundation" plan "-input=false" "-out=foundation.tfplan"
   Assert-NativeSuccess "Plan foundation"
   Assert-SafePlan "infra/foundation" "foundation.tfplan"
-  terraform -chdir=infra/foundation apply -input=false -auto-approve foundation.tfplan
+  terraform "-chdir=infra/foundation" apply "-input=false" -auto-approve foundation.tfplan
   Assert-NativeSuccess "Apply foundation"
 }
 
-terraform -chdir=infra/foundation init -input=false -reconfigure "-backend-config=bucket=$stateBucket" "-backend-config=prefix=foundation/demo"
+terraform "-chdir=infra/foundation" init "-input=false" -reconfigure "-backend-config=bucket=$stateBucket" "-backend-config=prefix=foundation/demo"
 Assert-NativeSuccess "Open foundation state"
-$imageRepository = (terraform -chdir=infra/foundation output -raw artifact_registry_repository).Trim()
-$recordingsBucket = (terraform -chdir=infra/foundation output -raw recordings_bucket).Trim()
-$sqlConnection = (terraform -chdir=infra/foundation output -raw sql_instance_connection_name).Trim()
-$serviceAccounts = terraform -chdir=infra/foundation output -json service_accounts | ConvertFrom-Json
+$imageRepository = (terraform "-chdir=infra/foundation" output -raw artifact_registry_repository).Trim()
+$recordingsBucket = (terraform "-chdir=infra/foundation" output -raw recordings_bucket).Trim()
+$sqlConnection = (terraform "-chdir=infra/foundation" output -raw sql_instance_connection_name).Trim()
+$serviceAccounts = terraform "-chdir=infra/foundation" output -json service_accounts | ConvertFrom-Json
 Assert-NativeSuccess "Read foundation outputs"
 
 if (-not $SkipImages) {
@@ -112,17 +114,17 @@ Assert-NativeSuccess "Read Managed Kafka bootstrap address"
 $env:TF_VAR_state_bucket = $stateBucket
 $env:TF_VAR_node_image = $nodeImage
 $env:TF_VAR_kafka_brokers = $kafkaBrokers
-terraform -chdir=infra/platform init -input=false -reconfigure "-backend-config=bucket=$stateBucket" "-backend-config=prefix=platform/demo"
+terraform "-chdir=infra/platform" init "-input=false" -reconfigure "-backend-config=bucket=$stateBucket" "-backend-config=prefix=platform/demo"
 Assert-NativeSuccess "Initialize platform"
-terraform -chdir=infra/platform plan -input=false -out=platform.tfplan
+terraform "-chdir=infra/platform" plan "-input=false" "-out=platform.tfplan"
 Assert-NativeSuccess "Plan platform"
 Assert-SafePlan "infra/platform" "platform.tfplan"
-terraform -chdir=infra/platform apply -input=false -auto-approve platform.tfplan
+terraform "-chdir=infra/platform" apply "-input=false" -auto-approve platform.tfplan
 Assert-NativeSuccess "Apply platform"
 
-$apiUrl = (terraform -chdir=infra/platform output -raw api_url).Trim()
-$leaseUrl = (terraform -chdir=infra/platform output -raw lease_url).Trim()
-$leaseEndpoint = (terraform -chdir=infra/platform output -raw lease_endpoint).Trim()
+$apiUrl = (terraform "-chdir=infra/platform" output -raw api_url).Trim()
+$leaseUrl = (terraform "-chdir=infra/platform" output -raw lease_url).Trim()
+$leaseEndpoint = (terraform "-chdir=infra/platform" output -raw lease_endpoint).Trim()
 
 gcloud container clusters get-credentials vigil-autopilot --project $vigilProject --region $vigilRegion
 Assert-NativeSuccess "Get GKE credentials"
@@ -149,8 +151,8 @@ Assert-NativeSuccess "Wait for scheduler"
 
 $repoExists = gh repo view fullstack-nick/vigil --json nameWithOwner 2>$null
 if ($LASTEXITCODE -eq 0) {
-  $provider = (terraform -chdir=infra/bootstrap output -raw github_workload_identity_provider).Trim()
-  $deployAccount = (terraform -chdir=infra/bootstrap output -raw github_service_account).Trim()
+  $provider = (terraform "-chdir=infra/bootstrap" output -raw github_workload_identity_provider).Trim()
+  $deployAccount = (terraform "-chdir=infra/bootstrap" output -raw github_service_account).Trim()
   gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo fullstack-nick/vigil --body $provider
   Assert-NativeSuccess "Set GitHub WIF provider variable"
   gh variable set GCP_DEPLOY_SERVICE_ACCOUNT --repo fullstack-nick/vigil --body $deployAccount

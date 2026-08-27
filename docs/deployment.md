@@ -27,8 +27,8 @@ Managed Kafka creation can take roughly half an hour. Provisioning time is not a
 After bootstrap, set repository variables to its outputs:
 
 ```powershell
-$provider = terraform -chdir=infra/bootstrap output -raw github_workload_identity_provider
-$serviceAccount = terraform -chdir=infra/bootstrap output -raw github_service_account
+$provider = terraform "-chdir=infra/bootstrap" output -raw github_workload_identity_provider
+$serviceAccount = terraform "-chdir=infra/bootstrap" output -raw github_service_account
 gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo fullstack-nick/vigil --body $provider
 gh variable set GCP_DEPLOY_SERVICE_ACCOUNT --repo fullstack-nick/vigil --body $serviceAccount
 ```
@@ -52,18 +52,18 @@ The primary always-on costs are:
 Destroy from consumers to foundations:
 
 ```powershell
-$stateBucket = terraform -chdir=infra/bootstrap output -raw state_bucket
+$stateBucket = terraform "-chdir=infra/bootstrap" output -raw state_bucket
 $kafkaBrokers = gcloud managed-kafka clusters describe vigil-events --project boltstream-r7m5o9ld --location europe-west3 --format="value(bootstrapAddress)"
 $env:TF_VAR_state_bucket = $stateBucket
 $env:TF_VAR_kafka_brokers = $kafkaBrokers
 $env:TF_VAR_node_image = "<last deployed digest>"
 
-terraform -chdir=infra/platform init -reconfigure -backend-config="bucket=$stateBucket" -backend-config="prefix=platform/demo"
-terraform -chdir=infra/platform destroy
+terraform "-chdir=infra/platform" init -reconfigure -backend-config="bucket=$stateBucket" -backend-config="prefix=platform/demo"
+terraform "-chdir=infra/platform" destroy
 kubectl delete namespace vigil --ignore-not-found
-terraform -chdir=infra/foundation init -reconfigure -backend-config="bucket=$stateBucket" -backend-config="prefix=foundation/demo"
-terraform -chdir=infra/foundation destroy
-terraform -chdir=infra/bootstrap destroy
+terraform "-chdir=infra/foundation" init -reconfigure -backend-config="bucket=$stateBucket" -backend-config="prefix=foundation/demo"
+terraform "-chdir=infra/foundation" destroy
+terraform "-chdir=infra/bootstrap" destroy
 ```
 
 Review every destroy plan. The recording and state buckets use `force_destroy` so the final two commands can remove demo data and versioned state; that deletion is irreversible. Existing non-Vigil networks, buckets, images, services, and IAM bindings are out of scope and must never appear in the plans.

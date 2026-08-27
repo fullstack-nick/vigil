@@ -57,6 +57,8 @@ resource "google_service_account_iam_member" "gke_workload_identity" {
   service_account_id = google_service_account.runtime[each.key].name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[vigil/${each.value}]"
+
+  depends_on = [google_container_cluster.vigil]
 }
 
 resource "google_service_account_iam_member" "github_act_as" {

@@ -31,7 +31,7 @@ resource "google_container_cluster" "vigil" {
   }
 
   monitoring_config {
-    enable_components = ["SYSTEM_COMPONENTS", "WORKLOADS", "APISERVER", "SCHEDULER", "CONTROLLER_MANAGER", "STORAGE"]
+    enable_components = ["SYSTEM_COMPONENTS", "APISERVER", "SCHEDULER", "CONTROLLER_MANAGER", "STORAGE"]
     managed_prometheus {
       enabled = true
     }

@@ -12,7 +12,7 @@ resource "google_managed_kafka_cluster" "vigil" {
   gcp_config {
     access_config {
       network_configs {
-        subnet = "projects/${data.google_project.current.number}/regions/${var.region}/subnetworks/${google_compute_subnetwork.vigil.name}"
+        subnet = "projects/${var.project_id}/regions/${var.region}/subnetworks/${google_compute_subnetwork.vigil.name}"
       }
     }
   }
@@ -176,4 +176,3 @@ resource "google_managed_kafka_acl" "idempotent_writes" {
     }
   }
 }
-

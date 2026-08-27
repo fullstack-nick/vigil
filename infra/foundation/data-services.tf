@@ -21,6 +21,7 @@ resource "google_sql_database_instance" "vigil" {
   deletion_protection = false
 
   settings {
+    edition                     = "ENTERPRISE"
     tier                        = var.database_tier
     availability_type           = "ZONAL"
     disk_type                   = "PD_SSD"
@@ -166,4 +167,3 @@ resource "google_storage_bucket_iam_member" "signer_read" {
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.runtime["signer"].email}"
 }
-
