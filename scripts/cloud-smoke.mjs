@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 const project = process.env.VIGIL_PROJECT_ID ?? "boltstream-r7m5o9ld";
 const region = process.env.VIGIL_REGION ?? "europe-west3";
+const scenario = process.env.VIGIL_SMOKE_SCENARIO ?? "all";
 const creatorId = "00000000-0000-4000-8000-000000000001";
 const origin = (
   process.env.VIGIL_API_URL ??
@@ -28,11 +29,26 @@ let cookie = "";
 let csrf = "";
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  let executable = command;
+  let executableArgs = args;
+  if (process.platform === "win32" && command === "gcloud") {
+    const lookup = spawnSync("where.exe", ["gcloud.ps1"], { encoding: "utf8" });
+    const script = lookup.stdout?.split(/\r?\n/u).find(Boolean);
+    if (!script) throw new Error("gcloud.ps1 was not found on PATH");
+    executable = "powershell.exe";
+    executableArgs = [
+      "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+      "-File", script, ...args,
+    ];
+  }
+  const result = spawnSync(executable, executableArgs, {
     encoding: "utf8",
     stdio: options.capture ? "pipe" : "inherit",
     shell: false,
   });
+  if (result.error) {
+    throw new Error(`${executable} could not start: ${result.error.message}`);
+  }
   if (result.status !== 0 && !options.allowFailure) {
     throw new Error(`${command} ${args.join(" ")} failed (${result.status})\n${result.stdout ?? ""}\n${result.stderr ?? ""}`);
   }
@@ -178,7 +194,21 @@ async function killedJob() {
     (value) => Boolean(value),
     60_000,
   );
-  run("kubectl", ["exec", "-n", "vigil", podName, "--", "sh", "-ec", "kill -KILL 1"], { allowFailure: true });
+  run(
+    "kubectl",
+    ["delete", "pod", podName, "-n", "vigil", "--grace-period=0", "--force", "--wait=true"],
+    { capture: true },
+  );
+  await waitFor(
+    `recorder Job ${jobName} to fail after forced Pod termination`,
+    async () => run(
+      "kubectl",
+      ["get", "job", jobName, "-n", "vigil", "-o", "jsonpath={.status.conditions[?(@.type=='Failed')].status}"],
+      { capture: true, allowFailure: true },
+    ),
+    (value) => value === "True",
+    30_000,
+  );
   const result = await waitForStatus(recordingId, ["FAILED"], 120_000);
   assert.equal(result.recording.failure?.code, "JOB_FAILED");
   assert.equal(result.recording.playbackAvailable, false);
@@ -190,7 +220,7 @@ try {
   assert.ok(origin.startsWith("https://"), "cloud smoke requires the HTTPS Cloud Run URL");
   await waitFor(
     "public Cloud Run health",
-    async () => (await request("/healthz")).payload,
+    async () => (await request("/readyz")).payload,
     (value) => value.status === "ok",
     120_000,
   );
@@ -206,10 +236,12 @@ try {
   assert.equal(anonymous.payload.error, "OPERATOR_AUTH_REQUIRED");
   await login();
   await setConsent(true);
-  const ready = await successfulRecording();
-  const revoked = await revokedRecording();
-  const killed = await killedJob();
-  process.stdout.write(`Vigil cloud smoke passed: ${JSON.stringify({ ready, revoked, killed })}\n`);
+  const results = {};
+  if (scenario === "all" || scenario === "ready") results.ready = await successfulRecording();
+  if (scenario === "all" || scenario === "revoked") results.revoked = await revokedRecording();
+  if (scenario === "all" || scenario === "killed") results.killed = await killedJob();
+  assert.ok(["all", "ready", "revoked", "killed"].includes(scenario), `unknown smoke scenario: ${scenario}`);
+  process.stdout.write(`Vigil cloud smoke passed: ${JSON.stringify(results)}\n`);
 } finally {
   await rm(artifacts, { recursive: true, force: true });
 }

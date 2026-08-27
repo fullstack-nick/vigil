@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -33,6 +33,7 @@ func run(baseContext context.Context) error {
 	if err != nil {
 		return err
 	}
+	configuration.SpoolDirectory = filepath.Join(configuration.SpoolDirectory, configuration.AttemptID)
 	if err := os.MkdirAll(configuration.SpoolDirectory, 0o750); err != nil {
 		return err
 	}
@@ -229,5 +230,5 @@ func logJSON(level, message string, fields map[string]any) {
 	fields["message"] = message
 	fields["timestamp"] = time.Now().UTC().Format(time.RFC3339Nano)
 	data, _ := json.Marshal(fields)
-	log.Print(string(data))
+	fmt.Println(string(data))
 }

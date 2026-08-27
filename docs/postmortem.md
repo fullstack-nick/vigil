@@ -1,25 +1,36 @@
 # Storage-permission incident exercise
 
-- Status: scheduled for the first live deployment
+- Status: completed and recovered
 - Severity: portfolio exercise / no user data
 - Date: 2026-08-27
-- Scope: synthetic demo source only
+- Window: 05:00:22–05:05:14 UTC (4m 52s)
+- Scope: synthetic demo source and Vigil's dedicated recordings bucket only
 
-## Intended exercise
+## Summary
 
-Temporarily remove only the bucket-level `roles/storage.objectAdmin` binding for the dedicated recorder service account, start a short recording, observe upload failure and the terminal event, confirm no playback is exposed, restore the exact binding, and prove a subsequent recording reaches `READY`.
+The exercise intentionally removed the bucket-level `roles/storage.objectAdmin` binding from only the Vigil recorder service account. Recording `0d450786-bc77-4d0f-a1c8-010c887625e9` failed closed with `SEGMENT_UPLOAD_PIPELINE`; the public API exposed no playback. The binding was restored in a `finally` path and read back from IAM. Recovery recording `fead4a27-b2fd-4ce9-9586-a5bbf88e5b77` subsequently reached `READY`, and its public media endpoint returned HTTP 200.
 
-## Safety boundaries
+## Timeline
 
-- Change only the `vigil-<project-number>-recordings` bucket binding for `vigil-recorder@boltstream-r7m5o9ld.iam.gserviceaccount.com`.
-- Do not change project-wide IAM, public-access prevention, worker cleanup access, or unrelated resources.
-- Capture UTC timestamps and redacted logs; never record credentials or signed URLs.
-- Restore the binding even if an intermediate assertion fails.
+| UTC | Observation |
+| --- | --- |
+| 05:00:22 | Exercise began after verifying the exact recorder binding existed. |
+| 05:00:27 | Cloud Audit Logs recorded removal of the bucket binding by the owner account. |
+| 05:00:58 | Scheduler created the intentionally affected recorder Job. |
+| 05:01:00 | Recorder acquired a valid consent lease and began capture. |
+| 05:01:05 | First segment upload received `403 storage.objects.create`; recording became `FAILED` and remained non-playable. |
+| 05:01:08 | Cloud Audit Logs recorded restoration of the exact bucket binding. |
+| 05:01:29 | First recovery scheduling attempt exposed a separate six-Job namespace quota exhaustion. |
+| 05:04:48 | After terminal demo Jobs were removed, the scheduler was restarted and replayed the uncommitted command. |
+| 05:04:52 | Recovery recorder Job was created. |
+| 05:05:14 | Recovery reached `READY`; playback returned HTTP 200. |
 
-## Expected detection and response
+## Impact and detection
 
-The recorder should emit a redacted storage error, publish `RECORDING_FAILED`, and exit non-zero. The scheduler sees a failed Job but deterministic terminal event handling prevents state regression. The public API must show `FAILED` with no playback. Recovery is complete only after the binding is restored and a fresh recording produces valid H.264/AAC media.
+The intended failure affected one 15-second synthetic recording. No user data, unrelated bucket, project-wide IAM binding, credential, or signed URL was involved. Detection was visible in three independent places: the recorder's redacted structured log contained the Storage `403`, the event projection exposed `SEGMENT_UPLOAD_PIPELINE`, and the public contract denied playback. The failed attempt left no published VOD object.
 
-## Actual timeline and findings
+## Findings and corrective actions
 
-This section will be replaced with measured timestamps, alert/log evidence, recovery duration, and follow-up actions after the deployed exercise.
+The primary cause was the planned least-scope IAM removal, and restoration worked as designed. The exercise also found that a one-hour Job TTL could exhaust the namespace's six-Job quota during a compact demonstration. The scheduler logged the create failure but advanced its in-process fetch loop without retrying that uncommitted command; recovery therefore required a restart.
+
+The implementation now retains a failed scheduling command and retries it with exponential backoff capped at 30 seconds, reduces finished-Job TTL to 60 seconds, isolates spool cleanup beneath an attempt-specific directory, and writes Go structured logs directly to stdout so Cloud Logging preserves their declared severity. The final cloud smoke suite rechecks success, consent revocation, forced Pod termination, and playback after these changes.

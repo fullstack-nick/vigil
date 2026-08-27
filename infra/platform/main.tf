@@ -181,7 +181,7 @@ resource "google_cloud_run_v2_service" "api" {
         period_seconds        = 5
         failure_threshold     = 12
         http_get {
-          path = "/healthz"
+          path = "/readyz"
           port = 8080
         }
       }
@@ -309,4 +309,3 @@ resource "google_cloud_run_v2_service_iam_member" "recorder_invokes_lease" {
   role     = "roles/run.invoker"
   member   = "serviceAccount:${local.service_accounts.recorder}"
 }
-

@@ -11,7 +11,7 @@ $vigilRegion = "europe-west3"
 
 ```powershell
 $vigilUrl = gcloud run services describe vigil-api --project $vigilProject --region $vigilRegion --format="value(status.url)"
-Invoke-RestMethod "$vigilUrl/healthz"
+Invoke-RestMethod "$vigilUrl/readyz"
 Invoke-RestMethod "$vigilUrl/api/public/summary"
 
 gcloud container clusters get-credentials vigil-autopilot --project $vigilProject --region $vigilRegion
@@ -28,10 +28,11 @@ kubectl get events -n vigil --sort-by=.lastTimestamp
 ```powershell
 kubectl logs deployment/vigil-backend-worker -n vigil -c worker --since=20m
 kubectl logs deployment/vigil-scheduler -n vigil --since=20m
+kubectl describe resourcequota vigil-runtime -n vigil
 gcloud managed-kafka acls list --cluster vigil-events --location $vigilRegion --project $vigilProject
 ```
 
-The safe recovery is to restore broker access and restart the affected Deployment; the outbox and committed offsets replay.
+The scheduler retains a command whose Job could not be created and retries with bounded backoff. Finished recorder Jobs normally expire after 60 seconds. If the Job quota is still exhausted, inspect the labeled Jobs and remove only terminal demo Jobs; never delete an active recorder to make room. The safe broker recovery is to restore access and restart the affected Deployment so the outbox and committed offsets replay.
 
 ## Recording stuck in RECORDING or FINALIZING
 

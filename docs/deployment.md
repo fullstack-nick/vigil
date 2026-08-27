@@ -12,6 +12,8 @@ The bootstrap, foundation, and platform states are independent. The foundation o
 
 ## One-time deployment
 
+Prerequisites are Docker with Buildx, Node.js, Git, GitHub CLI, Terraform, kubectl, Google Cloud CLI, and `gke-gcloud-auth-plugin`. Authenticate both gcloud and Application Default Credentials as `nickaccturk@gmail.com` before running the driver.
+
 The checked-in driver performs the same plan/apply/build sequence used for the first release:
 
 ```powershell
@@ -45,7 +47,7 @@ The primary always-on costs are:
 - one minimum `vigil-lease` Cloud Run instance;
 - Cloud Storage, Artifact Registry, logging, monitoring, NAT, and network egress according to use.
 
-`vigil-api` may scale to zero. Storage objects expire after application retention and a two-day lifecycle backstop. A project-scoped USD 300 monthly budget sends threshold signals at 50%, 80%, and 100%, but it does not stop resources. The budget also sees any small unrelated project spend, so labels and named resources are the attribution boundary.
+`vigil-api` may scale to zero. Storage objects expire after application retention and a two-day lifecycle backstop. A project-scoped 300-unit monthly budget in the billing account's native currency sends threshold signals at 50%, 80%, and 100%, but it does not stop resources. The budget also sees any small unrelated project spend, so labels and named resources are the attribution boundary.
 
 ## Teardown
 

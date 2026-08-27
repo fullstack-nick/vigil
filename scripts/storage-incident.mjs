@@ -25,7 +25,26 @@ let csrf = "";
 let bindingRemoved = false;
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { encoding: "utf8", stdio: options.capture ? "pipe" : "inherit", shell: false });
+  let executable = command;
+  let executableArgs = args;
+  if (process.platform === "win32" && command === "gcloud") {
+    const lookup = spawnSync("where.exe", ["gcloud.ps1"], { encoding: "utf8" });
+    const script = lookup.stdout?.split(/\r?\n/u).find(Boolean);
+    if (!script) throw new Error("gcloud.ps1 was not found on PATH");
+    executable = "powershell.exe";
+    executableArgs = [
+      "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+      "-File", script, ...args,
+    ];
+  }
+  const result = spawnSync(executable, executableArgs, {
+    encoding: "utf8",
+    stdio: options.capture ? "pipe" : "inherit",
+    shell: false,
+  });
+  if (result.error) {
+    throw new Error(`${executable} could not start: ${result.error.message}`);
+  }
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed (${result.status})\n${result.stdout ?? ""}\n${result.stderr ?? ""}`);
   }

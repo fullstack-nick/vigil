@@ -33,13 +33,28 @@ function Assert-SafePlan([string]$Directory, [string]$PlanFile) {
 }
 
 function Get-ImageDigest([string]$TaggedImage) {
-  $inspection = docker buildx imagetools inspect $TaggedImage
-  Assert-NativeSuccess "Inspect image $TaggedImage"
-  $match = [regex]::Match(($inspection -join "`n"), 'Digest:\s+(sha256:[a-f0-9]{64})')
-  if (-not $match.Success) {
-    throw "Could not resolve an immutable digest for $TaggedImage"
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $inspection = docker buildx imagetools inspect $TaggedImage 2>&1
+    if ($LASTEXITCODE -eq 0) {
+      $match = [regex]::Match(($inspection -join "`n"), 'Digest:\s+(sha256:[a-f0-9]{64})')
+      if ($match.Success) {
+        return $match.Groups[1].Value
+      }
+    }
+    if ($attempt -lt 3) {
+      Start-Sleep -Seconds (2 * $attempt)
+    }
   }
-  return $match.Groups[1].Value
+  throw "Could not resolve an immutable digest for $TaggedImage after 3 attempts"
+}
+
+$requiredCommands = @(
+  "docker", "gcloud", "gh", "git", "gke-gcloud-auth-plugin", "kubectl", "node", "terraform"
+)
+foreach ($command in $requiredCommands) {
+  if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
+    throw "Required deployment command is missing: $command"
+  }
 }
 
 $activeAccounts = @(gcloud auth list --filter="status:ACTIVE" --format="value(account)")

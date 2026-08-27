@@ -13,6 +13,23 @@ resource "google_logging_metric" "integrity_conflicts" {
   }
 }
 
+resource "google_logging_metric" "recorder_failures" {
+  project = var.project_id
+  name    = "vigil/recorder_failures"
+  filter  = <<-EOT
+    resource.type="k8s_container"
+    resource.labels.namespace_name="vigil"
+    resource.labels.container_name="recorder"
+    (jsonPayload.message="recorder failed" OR textPayload:"\"message\":\"recorder failed\"")
+  EOT
+  metric_descriptor {
+    metric_kind  = "DELTA"
+    value_type   = "INT64"
+    unit         = "1"
+    display_name = "Vigil recorder terminal failures"
+  }
+}
+
 resource "google_monitoring_alert_policy" "api_server_errors" {
   project      = var.project_id
   display_name = "Vigil API server errors"
@@ -50,10 +67,45 @@ resource "google_monitoring_alert_policy" "integrity_conflict" {
   display_name = "Vigil event integrity conflict"
   combiner     = "OR"
 
+  dynamic "conditions" {
+    for_each = toset(["cloud_run_revision", "k8s_container"])
+    content {
+      display_name = "Any quarantined conflict in ${conditions.value}"
+      condition_threshold {
+        filter          = "resource.type = \"${conditions.value}\" AND metric.type = \"logging.googleapis.com/user/${google_logging_metric.integrity_conflicts.name}\""
+        duration        = "0s"
+        comparison      = "COMPARISON_GT"
+        threshold_value = 0
+        aggregations {
+          alignment_period   = "60s"
+          per_series_aligner = "ALIGN_SUM"
+        }
+        trigger {
+          count = 1
+        }
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "86400s"
+  }
+  notification_channels = var.notification_channels
+  documentation {
+    content   = "A duplicate event ID or attempt/sequence carried different bytes. The projector quarantined it. Preserve evidence and follow the integrity-conflict runbook."
+    mime_type = "text/markdown"
+  }
+}
+
+resource "google_monitoring_alert_policy" "recorder_failure" {
+  project      = var.project_id
+  display_name = "Vigil recorder failure"
+  combiner     = "OR"
+
   conditions {
-    display_name = "Any quarantined conflicting event identity"
+    display_name = "Any recorder terminal failure"
     condition_threshold {
-      filter          = "resource.type = \"global\" AND metric.type = \"logging.googleapis.com/user/${google_logging_metric.integrity_conflicts.name}\""
+      filter          = "resource.type = \"k8s_container\" AND metric.type = \"logging.googleapis.com/user/${google_logging_metric.recorder_failures.name}\""
       duration        = "0s"
       comparison      = "COMPARISON_GT"
       threshold_value = 0
@@ -68,11 +120,11 @@ resource "google_monitoring_alert_policy" "integrity_conflict" {
   }
 
   alert_strategy {
-    auto_close = "86400s"
+    auto_close = "1800s"
   }
   notification_channels = var.notification_channels
   documentation {
-    content   = "A duplicate event ID or attempt/sequence carried different bytes. The projector quarantined it. Preserve evidence and follow the integrity-conflict runbook."
+    content   = "A recorder exited with a terminal error. Confirm that playback is unavailable, inspect the redacted recorder log, and follow docs/runbook.md."
     mime_type = "text/markdown"
   }
 }
@@ -150,5 +202,9 @@ resource "google_monitoring_dashboard" "vigil" {
       ]
     }
   })
-}
 
+  lifecycle {
+    # The Dashboard API injects name/etag fields and omits explicit zero positions.
+    ignore_changes = [dashboard_json]
+  }
+}

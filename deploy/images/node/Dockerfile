@@ -11,6 +11,5 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build --chown=node:node /app /app
 USER node
-EXPOSE 3000 8080 9090
+EXPOSE 8080
 CMD ["node", "apps/control-plane/dist/main.js"]
-

@@ -60,9 +60,22 @@ jobs:
           docker buildx build --platform linux/amd64 --file deploy/images/node/Dockerfile --tag "$node_tag" --push .
           docker buildx build --platform linux/amd64 --file deploy/images/go/Dockerfile --tag "$go_tag" --push .
           docker buildx build --platform linux/amd64 --file deploy/images/synthetic-hls/Dockerfile --tag "$source_tag" --push .
-          node_digest=$(docker buildx imagetools inspect "$node_tag" | awk '/^Digest:/ {print $2}')
-          go_digest=$(docker buildx imagetools inspect "$go_tag" | awk '/^Digest:/ {print $2}')
-          source_digest=$(docker buildx imagetools inspect "$source_tag" | awk '/^Digest:/ {print $2}')
+          resolve_digest() {
+            local tagged_image="$1" digest=""
+            for attempt in 1 2 3; do
+              digest=$(docker buildx imagetools inspect "$tagged_image" 2>/dev/null | awk '/^Digest:/ {print $2}')
+              if [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+                printf '%s' "$digest"
+                return 0
+              fi
+              sleep $((attempt * 2))
+            done
+            echo "Could not resolve digest for ${tagged_image}" >&2
+            return 1
+          }
+          node_digest=$(resolve_digest "$node_tag")
+          go_digest=$(resolve_digest "$go_tag")
+          source_digest=$(resolve_digest "$source_tag")
           echo "node=${repository}/node@${node_digest}" >> "$GITHUB_OUTPUT"
           echo "go=${repository}/go@${go_digest}" >> "$GITHUB_OUTPUT"
           echo "source=${repository}/synthetic-hls@${source_digest}" >> "$GITHUB_OUTPUT"

@@ -22,9 +22,15 @@ export async function runOutboxPublisher(
   health.outbox = true;
   try {
     while (!signal.aborted) {
-      const published = await publishBatch(database, producer);
-      health.outbox = true;
-      if (!published) {
+      try {
+        const published = await publishBatch(database, producer);
+        health.outbox = true;
+        if (published) continue;
+      } catch (error) {
+        health.outbox = false;
+        log("error", "outbox iteration failed", { error });
+      }
+      if (!signal.aborted) {
         await wait(config.outboxPollMillis, signal);
       }
     }

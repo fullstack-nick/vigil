@@ -22,7 +22,7 @@ import {
   stopRecording,
 } from "@vigil/database";
 import { httpDuration, log, metricsText, registry } from "@vigil/observability";
-import Fastify, { type FastifyRequest } from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { GoogleAuth, Impersonated } from "google-auth-library";
 
 import {
@@ -95,7 +95,11 @@ export async function startApi(config: ControlPlaneConfig): Promise<void> {
 
   app.addHook("onRequest", async (request, reply) => {
     requestStartedAt.set(request, process.hrtime.bigint());
-    if (request.url.startsWith("/api/") || request.url === "/healthz") {
+    if (
+      request.url.startsWith("/api/") ||
+      request.url === "/healthz" ||
+      request.url === "/readyz"
+    ) {
       reply.header("cache-control", "no-store");
     }
   });
@@ -120,14 +124,16 @@ export async function startApi(config: ControlPlaneConfig): Promise<void> {
     });
   });
 
-  app.get("/healthz", { schema: { hide: true } }, async (_request, reply) => {
+  const readiness = async (_request: FastifyRequest, reply: FastifyReply) => {
     try {
       await database.pool.query("SELECT 1");
       return { status: "ok", service: "vigil-api" };
     } catch {
       return reply.code(503).send({ status: "unavailable", service: "vigil-api" });
     }
-  });
+  };
+  app.get("/healthz", { schema: { hide: true } }, readiness);
+  app.get("/readyz", { schema: { hide: true } }, readiness);
   app.get("/metrics", { schema: { hide: true } }, async (_request, reply) => {
     reply.type(registry.contentType);
     return metricsText();

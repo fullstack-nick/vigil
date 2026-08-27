@@ -123,12 +123,27 @@ func (s *scheduler) consume(ctx context.Context, reader *kafka.Reader) error {
 		if err := validateCommand(&command); err != nil {
 			return fmt.Errorf("invalid command %s: %w", command.GetCommandId(), err)
 		}
-		if err := s.ensureRecorder(ctx, &command); err != nil {
-			s.healthy.Store(false)
-			logJSON("error", "recorder scheduling failed", map[string]any{
-				"recording_id": command.GetRecordingId(), "error": err.Error(),
-			})
-			continue
+		retryDelay := 2 * time.Second
+		for {
+			if err := s.ensureRecorder(ctx, &command); err != nil {
+				s.healthy.Store(false)
+				logJSON("error", "recorder scheduling failed; command retained for retry", map[string]any{
+					"recording_id": command.GetRecordingId(), "retry_after": retryDelay.String(), "error": err.Error(),
+				})
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(retryDelay):
+				}
+				if retryDelay < 30*time.Second {
+					retryDelay *= 2
+					if retryDelay > 30*time.Second {
+						retryDelay = 30 * time.Second
+					}
+				}
+				continue
+			}
+			break
 		}
 		if err := reader.CommitMessages(ctx, message); err != nil {
 			return fmt.Errorf("commit start command: %w", err)
@@ -182,7 +197,7 @@ func (s *scheduler) startLocalRecorder(command *recordingv1.StartRecordingComman
 func (s *scheduler) recorderJob(command *recordingv1.StartRecordingCommand) *batchv1.Job {
 	backoffLimit := int32(0)
 	deadline := int64(command.GetMaxDurationSeconds()) + 150
-	ttl := int32(3600)
+	ttl := int32(60)
 	nonRoot := true
 	user := int64(65532)
 	readOnly := true
@@ -415,5 +430,5 @@ func logJSON(level, message string, fields map[string]any) {
 	fields["message"] = message
 	fields["timestamp"] = time.Now().UTC().Format(time.RFC3339Nano)
 	data, _ := json.Marshal(fields)
-	log.Print(string(data))
+	fmt.Println(string(data))
 }

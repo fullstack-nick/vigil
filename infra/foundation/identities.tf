@@ -29,6 +29,7 @@ locals {
     scheduler-kafka    = ["scheduler", "roles/managedkafka.client"]
     recorder-kafka     = ["recorder", "roles/managedkafka.client"]
     migration-cloudsql = ["migration", "roles/cloudsql.client"]
+    node-artifacts     = ["node", "roles/artifactregistry.reader"]
     node-runtime       = ["node", "roles/container.defaultNodeServiceAccount"]
   }
 }

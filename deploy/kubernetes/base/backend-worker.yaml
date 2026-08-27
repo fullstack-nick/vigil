@@ -61,6 +61,8 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
+            runAsUser: 1000
+            runAsGroup: 1000
             capabilities:
               drop: ["ALL"]
           volumeMounts:
@@ -118,4 +120,3 @@ spec:
     - name: metrics
       port: 9090
       targetPort: metrics
-
