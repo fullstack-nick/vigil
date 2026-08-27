@@ -51,7 +51,7 @@ async function request(path, options = {}) {
 async function restoreSession() {
   try {
     const session = await request("/api/operator/session");
-    setSession(true, session.csrf);
+    setSession(session.authenticated, session.csrf ?? null);
   } catch {
     setSession(false, null);
   }

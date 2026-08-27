@@ -210,9 +210,20 @@ async function killedJob() {
     30_000,
   );
   const result = await waitForStatus(recordingId, ["FAILED"], 120_000);
-  assert.equal(result.recording.failure?.code, "JOB_FAILED");
+  assert.ok(
+    ["CAPTURE_FAILED", "JOB_FAILED"].includes(result.recording.failure?.code),
+    `forced Pod loss must produce a recorder or Job terminal failure: ${JSON.stringify(result.recording.failure)}`,
+  );
+  assert.ok(
+    result.timeline.some(
+      (item) => item.type === "RECORDING_FAILED" && item.payload?.payload?.code === "JOB_FAILED",
+    ),
+    "scheduler must publish JOB_FAILED after the Kubernetes Job reaches its failed condition",
+  );
   assert.equal(result.recording.playbackAvailable, false);
-  process.stdout.write(`PASS killed Kubernetes Job ${jobName} reached FAILED\n`);
+  process.stdout.write(
+    `PASS killed Kubernetes Job ${jobName} reached FAILED (${result.recording.failure.code})\n`,
+  );
   return recordingId;
 }
 

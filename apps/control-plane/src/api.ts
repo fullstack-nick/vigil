@@ -238,9 +238,10 @@ export async function startApi(config: ControlPlaneConfig): Promise<void> {
   );
   app.get(
     "/api/operator/session",
-    { preHandler: operatorGuard(config), schema: { tags: ["operator"] } },
+    { schema: { tags: ["operator"] } },
     async (request) => {
       const session = readSession(request, config);
+      if (!session) return { authenticated: false };
       return { authenticated: true, ...session };
     },
   );
