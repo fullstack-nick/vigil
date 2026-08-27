@@ -117,8 +117,9 @@ jobs:
           project_number=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
           export VIGIL_PROJECT_NUMBER="$project_number"
           export VIGIL_STORAGE_BUCKET="vigil-${project_number}-recordings"
-          export VIGIL_SQL_CONNECTION_NAME
-          VIGIL_SQL_CONNECTION_NAME=$(gcloud sql instances describe vigil-postgres --project "$PROJECT_ID" --format='value(connectionName)')
+          # The connection name is deterministic; deriving it avoids granting the
+          # deployment principal read access to every Cloud SQL instance.
+          export VIGIL_SQL_CONNECTION_NAME="${PROJECT_ID}:${REGION}:vigil-postgres"
           export VIGIL_WORKER_SERVICE_ACCOUNT="vigil-worker@${PROJECT_ID}.iam.gserviceaccount.com"
           export VIGIL_SCHEDULER_SERVICE_ACCOUNT="vigil-scheduler@${PROJECT_ID}.iam.gserviceaccount.com"
           export VIGIL_RECORDER_SERVICE_ACCOUNT="vigil-recorder@${PROJECT_ID}.iam.gserviceaccount.com"
