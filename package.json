@@ -1,0 +1,40 @@
+{
+  "name": "@vigil/workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Consent-gated, event-driven live-stream recording control plane.",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24.19.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm --filter \"./packages/**\" build && pnpm -r --if-present typecheck",
+    "test:domain": "pnpm --filter @vigil/domain test",
+    "test:contracts": "pnpm --filter @vigil/contract-tests test:fixture",
+    "test:local": "pnpm test:domain && pnpm test:contracts && node scripts/integration.mjs",
+    "test:failures": "pnpm build && node tests/failure-scenarios/run.mjs",
+    "test:cloud": "node scripts/cloud-smoke.mjs",
+    "test:incident": "node scripts/storage-incident.mjs",
+    "proto:generate": "buf generate",
+    "proto:lint": "buf lint",
+    "proto:breaking": "buf breaking --against '.git#branch=main'",
+    "db:migrate": "pnpm --filter @vigil/database migrate",
+    "dev:api": "pnpm --filter @vigil/control-plane dev:api",
+    "dev:lease": "pnpm --filter @vigil/control-plane dev:lease",
+    "dev:worker": "pnpm --filter @vigil/backend-worker dev",
+    "verify": "pnpm proto:lint && pnpm typecheck && pnpm build && pnpm verify:go && pnpm verify:terraform && pnpm verify:kustomize && pnpm verify:brand",
+    "verify:go": "pwsh -NoProfile -File scripts/verify-go.ps1",
+    "verify:terraform": "terraform fmt -check -recursive infra && pwsh -NoProfile -File scripts/terraform-validate.ps1",
+    "verify:kustomize": "node scripts/verify-kustomize.mjs",
+    "verify:brand": "node scripts/branding-guard.mjs",
+    "deploy:cloud": "pwsh -NoProfile -File scripts/deploy.ps1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "tsx": "4.20.6",
+    "typescript": "7.0.2",
+    "vitest": "4.0.17"
+  }
+}

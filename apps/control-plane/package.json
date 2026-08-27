@@ -1,0 +1,31 @@
+{
+  "name": "@vigil/control-plane",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-public.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev:api": "SERVICE_MODE=api tsx watch src/main.ts",
+    "dev:lease": "SERVICE_MODE=lease tsx watch src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.2",
+    "@fastify/helmet": "13.1.1",
+    "@fastify/rate-limit": "11.2.0",
+    "@fastify/static": "10.1.3",
+    "@fastify/swagger": "9.8.1",
+    "@google-cloud/storage": "8.0.1",
+    "@grpc/grpc-js": "1.14.4",
+    "@vigil/contracts": "workspace:*",
+    "@vigil/database": "workspace:*",
+    "@vigil/observability": "workspace:*",
+    "fastify": "5.12.1",
+    "google-auth-library": "9.15.1"
+  },
+  "devDependencies": {
+    "tsx": "4.20.6"
+  }
+}

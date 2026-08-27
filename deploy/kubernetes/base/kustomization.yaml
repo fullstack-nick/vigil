@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: vigil
+resources:
+  - namespace.yaml
+  - serviceaccounts.yaml
+  - rbac.yaml
+  - secret-provider.yaml
+  - backend-worker.yaml
+  - scheduler.yaml
+  - synthetic-hls.yaml
+  - policies.yaml
+  - monitoring.yaml
+configMapGenerator:
+  - name: vigil-runtime
+    literals:
+      - KAFKA_BROKERS=__KAFKA_BROKERS__
+      - KAFKA_AUTH_MODE=gcp-oauth
+      - KAFKA_PROJECTOR_GROUP=vigil-projector-v1
+      - KAFKA_CLIENT_ID=vigil-backend-worker
+      - KAFKA_PRINCIPAL=__WORKER_SERVICE_ACCOUNT__
+      - STORAGE_BUCKET=__STORAGE_BUCKET__
+      - INSTANCE_CONNECTION_NAME=__SQL_CONNECTION_NAME__
+      - DB_HOST=127.0.0.1
+      - DB_PORT=5432
+      - DB_USER=vigil
+      - DB_NAME=vigil
+      - DB_PASSWORD_FILE=/var/secrets/vigil/db-password
+      - DB_POOL_SIZE=10
+      - RETENTION_HOURS=24
+      - SERVICE_NAME=vigil-backend-worker
+      - PORT=9090
+      - SCHEDULER_MODE=kubernetes
+      - NAMESPACE=vigil
+      - RECORDER_IMAGE=vigil/go:deploy
+      - LEASE_ENDPOINT=__LEASE_ENDPOINT__
+      - LEASE_AUDIENCE=__LEASE_AUDIENCE__
+      - LEASE_INSECURE=false
+      - ALLOWED_HLS_HOSTS=10.42.0.20
+      - SCHEDULER_CONSUMER_GROUP=vigil-scheduler-v1
+      - METRICS_PORT=9090
+generatorOptions:
+  disableNameSuffixHash: false
+

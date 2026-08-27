@@ -1,0 +1,26 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: vigil-backend-worker
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vigil
+      app.kubernetes.io/component: backend-worker
+  endpoints:
+    - port: metrics
+      interval: 30s
+---
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: vigil-scheduler
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vigil
+      app.kubernetes.io/component: scheduler
+  endpoints:
+    - port: metrics
+      interval: 30s
+

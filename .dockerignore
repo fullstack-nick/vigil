@@ -1,0 +1,13 @@
+.git
+.github
+.terraform
+**/.terraform
+node_modules
+**/node_modules
+**/dist
+tmp
+spool
+recordings
+*.tfstate*
+*.tfplan
+.env*

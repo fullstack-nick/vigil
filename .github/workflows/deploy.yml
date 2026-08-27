@@ -1,0 +1,119 @@
+name: Deploy demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: vigil-demo-deployment
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: boltstream-r7m5o9ld
+  REGION: europe-west3
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: demo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Authenticate to Google Cloud without a key
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.15.8
+
+      - name: Resolve isolated state
+        id: state
+        shell: bash
+        run: echo "bucket=vigil-$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')-tfstate" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push immutable images
+        id: images
+        shell: bash
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          repository="${REGION}-docker.pkg.dev/${PROJECT_ID}/vigil"
+          node_tag="${repository}/node:${GITHUB_SHA}"
+          go_tag="${repository}/go:${GITHUB_SHA}"
+          source_tag="${repository}/synthetic-hls:${GITHUB_SHA}"
+          docker buildx build --platform linux/amd64 --file deploy/images/node/Dockerfile --tag "$node_tag" --push .
+          docker buildx build --platform linux/amd64 --file deploy/images/go/Dockerfile --tag "$go_tag" --push .
+          docker buildx build --platform linux/amd64 --file deploy/images/synthetic-hls/Dockerfile --tag "$source_tag" --push .
+          node_digest=$(docker buildx imagetools inspect "$node_tag" | awk '/^Digest:/ {print $2}')
+          go_digest=$(docker buildx imagetools inspect "$go_tag" | awk '/^Digest:/ {print $2}')
+          source_digest=$(docker buildx imagetools inspect "$source_tag" | awk '/^Digest:/ {print $2}')
+          echo "node=${repository}/node@${node_digest}" >> "$GITHUB_OUTPUT"
+          echo "go=${repository}/go@${go_digest}" >> "$GITHUB_OUTPUT"
+          echo "source=${repository}/synthetic-hls@${source_digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Apply Cloud Run platform
+        id: platform
+        shell: bash
+        env:
+          TF_VAR_state_bucket: ${{ steps.state.outputs.bucket }}
+          TF_VAR_node_image: ${{ steps.images.outputs.node }}
+        run: |
+          export TF_VAR_kafka_brokers
+          TF_VAR_kafka_brokers=$(gcloud managed-kafka clusters describe vigil-events --project "$PROJECT_ID" --location "$REGION" --format='value(bootstrapAddress)')
+          terraform -chdir=infra/platform init -input=false -backend-config="bucket=${TF_VAR_state_bucket}" -backend-config="prefix=platform/demo"
+          terraform -chdir=infra/platform plan -input=false -out=platform.tfplan
+          terraform -chdir=infra/platform apply -input=false -auto-approve platform.tfplan
+          echo "api_url=$(terraform -chdir=infra/platform output -raw api_url)" >> "$GITHUB_OUTPUT"
+          echo "lease_url=$(terraform -chdir=infra/platform output -raw lease_url)" >> "$GITHUB_OUTPUT"
+          echo "lease_endpoint=$(terraform -chdir=infra/platform output -raw lease_endpoint)" >> "$GITHUB_OUTPUT"
+          echo "kafka_brokers=${TF_VAR_kafka_brokers}" >> "$GITHUB_OUTPUT"
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395 # v3.0.0
+        with:
+          cluster_name: vigil-autopilot
+          location: europe-west3
+          project_id: boltstream-r7m5o9ld
+
+      - name: Deploy GKE workloads
+        shell: bash
+        env:
+          VIGIL_NODE_IMAGE: ${{ steps.images.outputs.node }}
+          VIGIL_GO_IMAGE: ${{ steps.images.outputs.go }}
+          VIGIL_SYNTHETIC_IMAGE: ${{ steps.images.outputs.source }}
+          VIGIL_KAFKA_BROKERS: ${{ steps.platform.outputs.kafka_brokers }}
+          VIGIL_LEASE_ENDPOINT: ${{ steps.platform.outputs.lease_endpoint }}
+          VIGIL_LEASE_AUDIENCE: ${{ steps.platform.outputs.lease_url }}
+        run: |
+          project_number=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+          export VIGIL_PROJECT_NUMBER="$project_number"
+          export VIGIL_STORAGE_BUCKET="vigil-${project_number}-recordings"
+          export VIGIL_SQL_CONNECTION_NAME
+          VIGIL_SQL_CONNECTION_NAME=$(gcloud sql instances describe vigil-postgres --project "$PROJECT_ID" --format='value(connectionName)')
+          export VIGIL_WORKER_SERVICE_ACCOUNT="vigil-worker@${PROJECT_ID}.iam.gserviceaccount.com"
+          export VIGIL_SCHEDULER_SERVICE_ACCOUNT="vigil-scheduler@${PROJECT_ID}.iam.gserviceaccount.com"
+          export VIGIL_RECORDER_SERVICE_ACCOUNT="vigil-recorder@${PROJECT_ID}.iam.gserviceaccount.com"
+          node scripts/deploy-kubernetes.mjs
+          kubectl rollout status deployment/vigil-synthetic-hls -n vigil --timeout=10m
+          kubectl rollout status deployment/vigil-backend-worker -n vigil --timeout=10m
+          kubectl rollout status deployment/vigil-scheduler -n vigil --timeout=10m
+
+      - name: Read-only live check
+        shell: bash
+        run: curl --fail --show-error --silent "${{ steps.platform.outputs.api_url }}/api/public/summary"

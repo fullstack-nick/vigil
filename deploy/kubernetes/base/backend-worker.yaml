@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vigil-backend-worker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vigil
+      app.kubernetes.io/component: backend-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vigil
+        app.kubernetes.io/component: backend-worker
+    spec:
+      serviceAccountName: vigil-backend-worker
+      terminationGracePeriodSeconds: 35
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: vigil/node:deploy
+          imagePullPolicy: IfNotPresent
+          command: ["node", "apps/backend-worker/dist/main.js"]
+          envFrom:
+            - configMapRef:
+                name: vigil-runtime
+          env:
+            - name: NODE_OPTIONS
+              value: --disable-warning=TimeoutNegativeWarning
+          ports:
+            - name: metrics
+              containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 8
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+              ephemeral-storage: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: secrets
+              mountPath: /var/secrets/vigil
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.18.2@sha256:fc224915ef435afeb5b2a9421260a0d31986d5c8b7c7f5783c7f5d5885700cd2
+          args:
+            - --private-ip
+            - --structured-logs
+            - --address=127.0.0.1
+            - --port=5432
+            - $(INSTANCE_CONNECTION_NAME)
+          envFrom:
+            - configMapRef:
+                name: vigil-runtime
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+              ephemeral-storage: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+              ephemeral-storage: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: vigil-runtime-secrets
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vigil-backend-worker
+spec:
+  selector:
+    app.kubernetes.io/name: vigil
+    app.kubernetes.io/component: backend-worker
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+

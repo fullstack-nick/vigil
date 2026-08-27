@@ -1,0 +1,26 @@
+{
+  "name": "@vigil/backend-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "8.0.1",
+    "@vigil/contracts": "workspace:*",
+    "@vigil/database": "workspace:*",
+    "@vigil/domain": "workspace:*",
+    "@vigil/observability": "workspace:*",
+    "google-auth-library": "10.5.0",
+    "kafkajs": "2.2.4"
+  },
+  "devDependencies": {
+    "tsx": "4.20.6"
+  }
+}
+

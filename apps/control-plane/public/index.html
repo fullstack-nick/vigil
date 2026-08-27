@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Vigil is a consent-gated, event-driven live-stream recording control plane built on Google Cloud."
+    />
+    <meta name="theme-color" content="#07110f" />
+    <title>Vigil — consent is a runtime invariant</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" type="module"></script>
+  </head>
+  <body>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Vigil home">
+        <span class="brand-mark" aria-hidden="true"><span></span></span>
+        <span>Vigil</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#control-room">Control room</a>
+        <a href="#recordings">Recordings</a>
+        <a href="/openapi.json">OpenAPI</a>
+        <button id="owner-button" class="button button-quiet" type="button">Owner access</button>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero shell">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="live-dot"></span> Live reliability system</p>
+          <h1>Consent is not a checkbox.<br /><span>It is a running invariant.</span></h1>
+          <p class="hero-lede">
+            Vigil orchestrates bounded HLS recording jobs while continuously proving that the creator
+            still authorizes capture. Events may arrive twice or late; privacy still wins.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#control-room">Inspect the live system</a>
+            <a class="button button-outline" href="/openapi.json">Read the contract</a>
+          </div>
+          <ul class="invariant-list" aria-label="Core invariants">
+            <li><span>01</span>45-second renewable leases</li>
+            <li><span>02</span>Idempotent event projection</li>
+            <li><span>03</span>Bounded media spooling</li>
+          </ul>
+        </div>
+
+        <div class="system-map" aria-label="Vigil architecture overview">
+          <div class="map-header">
+            <span>CONTROL PLANE / EUROPE-WEST3</span>
+            <span id="system-health" class="health-pill"><i></i> Checking</span>
+          </div>
+          <div class="map-stage">
+            <div class="map-node node-viewer">
+              <small>PUBLIC</small>
+              <strong>Portfolio UI</strong>
+              <span>read-only by default</span>
+            </div>
+            <div class="connector connector-a"><b></b></div>
+            <div class="map-node node-api accent-node">
+              <small>CLOUD RUN</small>
+              <strong>Control API</strong>
+              <span>consent + requests</span>
+            </div>
+            <div class="connector connector-b"><b></b></div>
+            <div class="map-node node-bus">
+              <small>MANAGED KAFKA</small>
+              <strong>Event backbone</strong>
+              <span>at-least-once</span>
+            </div>
+            <div class="connector connector-c"><b></b></div>
+            <div class="map-node node-recorder">
+              <small>GKE AUTOPILOT</small>
+              <strong>Recorder job</strong>
+              <span>one bounded workload</span>
+            </div>
+            <div class="connector connector-d"><b></b></div>
+            <div class="map-node node-storage">
+              <small>PRIVATE DATA</small>
+              <strong>Postgres + GCS</strong>
+              <span>24-hour retention</span>
+            </div>
+            <div class="map-orbit orbit-one"></div>
+            <div class="map-orbit orbit-two"></div>
+          </div>
+          <div class="map-footer">
+            <span><i class="key key-control"></i> authorization path</span>
+            <span><i class="key key-event"></i> event path</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="metric-band" aria-label="System limits">
+        <div><strong id="metric-active">0</strong><span>active recordings</span></div>
+        <div><strong>3</strong><span>hard concurrency cap</span></div>
+        <div><strong>45s</strong><span>lease time to live</span></div>
+        <div><strong>24h</strong><span>demo retention</span></div>
+      </section>
+
+      <section id="control-room" class="section shell">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Live control room</p>
+            <h2>Observe freely. Operate deliberately.</h2>
+          </div>
+          <p>
+            Public state is intentionally readable. Actions that create cloud workloads require the
+            owner credential and a short-lived, same-site session.
+          </p>
+        </div>
+
+        <div class="control-grid">
+          <article class="panel operator-panel">
+            <div class="panel-heading">
+              <div>
+                <span class="panel-kicker">Operator controls</span>
+                <h3>Consent gate</h3>
+              </div>
+              <span id="operator-state" class="access-pill locked">Locked</span>
+            </div>
+
+            <div class="creator-card">
+              <div class="creator-avatar" aria-hidden="true">VS</div>
+              <div>
+                <small>SYNTHETIC CREATOR</small>
+                <strong id="creator-name">Vigil Demo Source</strong>
+              </div>
+              <span id="consent-state" class="consent-badge unknown">Unknown</span>
+            </div>
+
+            <div id="locked-message" class="locked-message">
+              <span class="lock-glyph" aria-hidden="true"></span>
+              <div>
+                <strong>Controls are owner-only</strong>
+                <p>Enter the credential to grant consent or start a bounded demo recording.</p>
+              </div>
+              <button id="unlock-button" class="button button-outline" type="button">Unlock</button>
+            </div>
+
+            <div id="operator-controls" class="operator-controls" hidden>
+              <div class="control-row">
+                <div>
+                  <label for="consent-button">Creator authorization</label>
+                  <p>Revocation terminates the next lease renewal.</p>
+                </div>
+                <button id="consent-button" class="toggle-button" type="button" role="switch" aria-checked="false">
+                  <span></span><b>Grant</b>
+                </button>
+              </div>
+              <div class="control-row recording-control">
+                <div>
+                  <label for="duration-select">Demo duration</label>
+                  <p>The deployed source is synthetic H.264/AAC.</p>
+                </div>
+                <select id="duration-select">
+                  <option value="20">20 seconds</option>
+                  <option value="30" selected>30 seconds</option>
+                  <option value="60">60 seconds</option>
+                </select>
+              </div>
+              <button id="record-button" class="button button-primary button-full" type="button">
+                Start consent-gated recording
+              </button>
+              <button id="logout-button" class="text-button" type="button">End owner session</button>
+            </div>
+          </article>
+
+          <article class="panel detail-panel">
+            <div class="panel-heading">
+              <div>
+                <span class="panel-kicker">Selected workload</span>
+                <h3 id="detail-title">No recording selected</h3>
+              </div>
+              <span id="detail-status" class="status-badge neutral">Awaiting</span>
+            </div>
+            <div id="empty-detail" class="empty-detail">
+              <div class="radar" aria-hidden="true"><span></span></div>
+              <strong>Choose a recording to inspect its event history</strong>
+              <p>Projected state is rebuilt from immutable, sequence-numbered events.</p>
+            </div>
+            <div id="recording-detail" hidden>
+              <dl class="detail-facts">
+                <div><dt>Segments</dt><dd id="detail-segments">0</dd></div>
+                <div><dt>Media bytes</dt><dd id="detail-bytes">0 B</dd></div>
+                <div><dt>Duration</dt><dd id="detail-duration">0s</dd></div>
+                <div><dt>Projection</dt><dd id="detail-version">v0</dd></div>
+              </dl>
+              <video id="playback" controls preload="metadata" hidden></video>
+              <div class="timeline-heading">
+                <strong>Immutable event timeline</strong>
+                <span>logical sequence</span>
+              </div>
+              <ol id="timeline" class="timeline"></ol>
+              <button id="stop-button" class="button button-danger button-full" type="button" hidden>
+                Stop active recording
+              </button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="recordings" class="section shell recordings-section">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">Public demo history</p>
+            <h2>Every state has evidence.</h2>
+          </div>
+          <button id="refresh-button" class="button button-quiet" type="button">Refresh state</button>
+        </div>
+        <div id="recording-list" class="recording-list" aria-live="polite">
+          <article class="recording-card skeleton"></article>
+          <article class="recording-card skeleton"></article>
+          <article class="recording-card skeleton"></article>
+        </div>
+      </section>
+
+      <section class="principles shell section">
+        <div class="principle-intro">
+          <p class="eyebrow">Designed for failure</p>
+          <h2>The interesting part begins when delivery gets messy.</h2>
+        </div>
+        <div class="principle-grid">
+          <article><span>01</span><h3>Privacy precedence</h3><p>A revocation or stop always defeats a competing completion, regardless of arrival order.</p></article>
+          <article><span>02</span><h3>Deterministic retries</h3><p>Commands, events, jobs, and object paths retain stable identities across redelivery.</p></article>
+          <article><span>03</span><h3>Bounded workers</h3><p>Hard duration, spool, upload, CPU, memory, and ephemeral-storage budgets fail clearly.</p></article>
+          <article><span>04</span><h3>Inspectable operations</h3><p>Metrics, structured logs, alerts, a runbook, and a deliberate incident tell the full story.</p></article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer shell">
+      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"><span></span></span><span>Vigil</span></a>
+      <p>An independent portfolio system by Nick Petrushin.</p>
+      <div>
+        <a href="/openapi.json">API</a>
+        <a href="https://github.com/fullstack-nick/vigil/blob/main/docs/architecture.md">Architecture</a>
+        <a href="https://github.com/fullstack-nick/vigil/blob/main/docs/runbook.md">Runbook</a>
+        <a href="https://github.com/fullstack-nick/vigil/blob/main/docs/postmortem.md">Incident</a>
+        <a href="https://github.com/fullstack-nick/vigil">Source</a>
+      </div>
+    </footer>
+
+    <dialog id="login-dialog" class="login-dialog">
+      <form id="login-form" method="dialog">
+        <button id="close-dialog" class="dialog-close" type="button" aria-label="Close">×</button>
+        <span class="brand-mark large" aria-hidden="true"><span></span></span>
+        <p class="eyebrow">Owner access</p>
+        <h2>Unlock recording controls</h2>
+        <p>The credential is sent once over HTTPS. It is never stored in this page or compiled into the client.</p>
+        <label for="credential-input">Operator credential</label>
+        <input id="credential-input" name="credential" type="password" autocomplete="current-password" required />
+        <p id="login-error" class="form-error" role="alert"></p>
+        <button class="button button-primary button-full" type="submit">Start secure session</button>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

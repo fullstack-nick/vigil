@@ -1,0 +1,196 @@
+name: vigil
+
+x-node-image: &node-image
+  build:
+    context: .
+    dockerfile: deploy/images/node/Dockerfile
+  image: vigil/node:local
+
+x-database-environment: &database-environment
+  DATABASE_URL: postgresql://vigil:vigil-local-database@postgres:5432/vigil
+
+x-runtime-environment: &runtime-environment
+  <<: *database-environment
+  KAFKA_BROKERS: kafka:9092
+  KAFKA_AUTH_MODE: local
+  STORAGE_BUCKET: vigil-local-recordings
+  STORAGE_EMULATOR_HOST: http://fake-gcs:4443
+  RETENTION_HOURS: "24"
+
+services:
+  postgres:
+    image: postgres:16-bookworm@sha256:bb3e1a57e5407e0a5280b4211980a5e537f4abd234a87014ac979849a78dd825
+    environment:
+      POSTGRES_DB: vigil
+      POSTGRES_USER: vigil
+      POSTGRES_PASSWORD: vigil-local-database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigil -d vigil"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  kafka:
+    image: apache/kafka:4.1.1@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:19092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:19092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    ports:
+      - "127.0.0.1:19092:19092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  kafka-init:
+    image: apache/kafka:4.1.1@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -ec
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic vigil.recording.commands.v1 --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic vigil.recording.events.v1 --partitions 3 --replication-factor 1
+
+  fake-gcs:
+    image: fsouza/fake-gcs-server:1.56.1@sha256:797ce226d62f947c009dc40246b30cfb456b8473d8241407f9d6f2c04e4d69ef
+    command: ["-scheme", "http", "-port", "4443", "-backend", "memory", "-external-url", "http://fake-gcs:4443", "-public-host", "fake-gcs:4443"]
+
+  gcs-init:
+    image: curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
+    depends_on:
+      fake-gcs:
+        condition: service_started
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        until curl -fsS http://fake-gcs:4443/storage/v1/b?project=vigil-local >/dev/null; do sleep 1; done
+        curl -sS -X POST 'http://fake-gcs:4443/storage/v1/b?project=vigil-local' -H 'content-type: application/json' -d '{"name":"vigil-local-recordings"}' >/dev/null
+
+  synthetic-hls:
+    build:
+      context: .
+      dockerfile: deploy/images/synthetic-hls/Dockerfile
+    image: vigil/synthetic-hls:local
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /srv/hls/live/index.m3u8"]
+      interval: 2s
+      timeout: 2s
+      retries: 40
+
+  migrate:
+    <<: *node-image
+    command: ["node", "packages/database/dist/migrate.js"]
+    environment:
+      <<: *database-environment
+      MIGRATIONS_DIR: /app/database/migrations
+      SERVICE_NAME: vigil-migration
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *node-image
+    command: ["node", "apps/control-plane/dist/main.js"]
+    ports:
+      - "3000:3000"
+    environment:
+      <<: *runtime-environment
+      NODE_ENV: development
+      SERVICE_MODE: api
+      SERVICE_NAME: vigil-api
+      PORT: "3000"
+      PUBLIC_ORIGIN: http://localhost:3000
+      DEMO_SOURCE_ID: synthetic-hls
+      DEMO_SOURCE_URL: http://synthetic-hls:8080/live/index.m3u8
+      OPERATOR_CREDENTIAL: vigil-local-owner
+      SESSION_SECRET: local-only-session-secret-change-before-deploying
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      gcs-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  lease:
+    <<: *node-image
+    command: ["node", "apps/control-plane/dist/main.js"]
+    environment:
+      <<: *database-environment
+      NODE_ENV: development
+      SERVICE_MODE: lease
+      SERVICE_NAME: vigil-lease
+      PORT: "8080"
+      DEMO_SOURCE_URL: http://synthetic-hls:8080/live/index.m3u8
+      OPERATOR_CREDENTIAL: vigil-local-owner
+      SESSION_SECRET: local-only-session-secret-change-before-deploying
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *node-image
+    command: ["node", "apps/backend-worker/dist/main.js"]
+    environment:
+      <<: *runtime-environment
+      SERVICE_NAME: vigil-backend-worker
+      PORT: "9090"
+      NODE_OPTIONS: --disable-warning=TimeoutNegativeWarning
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+      gcs-init:
+        condition: service_completed_successfully
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: deploy/images/go/Dockerfile
+    image: vigil/go:local
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_AUTH_MODE: local
+      SCHEDULER_MODE: local
+      RECORDER_BINARY: /app/recorder
+      LEASE_ENDPOINT: lease:8080
+      LEASE_INSECURE: "true"
+      STORAGE_BUCKET: vigil-local-recordings
+      STORAGE_EMULATOR_HOST: http://fake-gcs:4443
+      ALLOWED_HLS_HOSTS: synthetic-hls
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      lease:
+        condition: service_started
+      synthetic-hls:
+        condition: service_healthy
+      gcs-init:
+        condition: service_completed_successfully
+    volumes:
+      - recorder-spool:/spool
+
+volumes:
+  postgres-data:
+  recorder-spool:

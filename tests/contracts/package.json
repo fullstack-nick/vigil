@@ -1,0 +1,17 @@
+{
+  "name": "@vigil/contract-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:fixture": "tsx typescript-fixture.ts verify",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@vigil/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "4.20.6"
+  }
+}
+
