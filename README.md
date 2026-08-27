@@ -7,11 +7,11 @@ Vigil is a consent-gated live-stream recording control plane. It records one fix
 [![Verify](https://github.com/fullstack-nick/vigil/actions/workflows/verify.yml/badge.svg)](https://github.com/fullstack-nick/vigil/actions/workflows/verify.yml)
 
 <!-- LIVE_DEMO_START -->
-The public GCP demo URL is populated after the first deployment.
+[Open the live Vigil control room](https://vigil-api-daztunbrsq-ey.a.run.app) — public state and completed demo playback are read-only; recording controls require the owner credential.
 <!-- LIVE_DEMO_END -->
 
 <!-- SCREENSHOT_START -->
-<!-- A deployed control-room screenshot is added here by the release workflow. -->
+![Vigil live control room](output/playwright/vigil-control-room.png)
 <!-- SCREENSHOT_END -->
 
 ## What this demonstrates
